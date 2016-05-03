@@ -1,5 +1,6 @@
 var Quill = require('quill')
   , bindEditor = require('./bindingQuill.js')
+  , jsonParse = require('json-stream')
   , vdom = require('virtual-dom')
   , h = vdom.h
 
@@ -20,47 +21,10 @@ function setup(plugin, imports, register) {
   document.head.appendChild(link)
 
   editor.registerEditor('Quill', 'richtext', 'A rich-text editor'
-  , function(el) {
+  , function(el, onClose) {
 
     // Create toolbar
-    var toolbar = vdom.create(h('div.Editor__toolbar', [
-      h('span.ql-format-group', [
-        h('select.ql-size',{title: 'Size'}, [
-	  h('option', {value:"10px"},'Small'),
-	  h('option', {value:"13px"},'Normal'),
-	  h('option', {value:"18px"},'Large'),
-	  h('option', {value:"32px"},'Huge')
-	])
-      , h('select.ql-font', {title: 'Font'}, [
-	  h('option', {value:"sans-serif"},'Sans-serif'),
-	  h('option', {value:"serif"},'Serif'),
-	  h('option', {value:"monospace"},'monospace')
-	])
-      ])
-    , h('span.ql-format-group', [
-        h("span.ql-format-button.ql-bold", {title: 'Bold'}),
-        h("span.ql-format-button.ql-italic", {title: 'Italic'}),
-        h("span.ql-format-button.ql-underline", {title: 'Underline'}),
-        h("span.ql-format-button.ql-strikethrough", {title: 'Strikethrough'}),
-        h("span.ql-format-button.ql-link", {title: 'Link'})
-      ])
-    , h('span.ql-format-group', [
-        h('select.ql-color', {title:'Text color'},
-	  COLORS.map(color => h('option', {value:color, label:color}))),
-        h('select.ql-background', {title:'Background color'},
-	  COLORS.map(color => h('option', {value:color, label:color})))
-      ])
-    , h('span.ql-format-group', [
-        h("span.ql-format-button.ql-bullet", {title: 'Bulleted list'}),
-        h("span.ql-format-button.ql-list", {title: 'Ordered list'}),
-        h('select.ql-align', {title: 'Alignment'}, [
-	  h('option', {value:"left", label:'Left'}),
-	  h('option', {value:"center", label:'Center'}),
-	  h('option', {value:"right", label:'Right'}),
-	  h('option', {value:"justify", label: 'Justify'})
-	])
-      ])
-    ]))
+    var toolbar = vdom.create(TOOLBAR)
     toolbar.style['display'] = 'none' // Don't display until the content is loaded
     el.appendChild(toolbar)
 
@@ -74,10 +38,13 @@ function setup(plugin, imports, register) {
     return new Promise(function(resolve) {
       quill = new Quill(content, {
         modules: {
-	  toolbar: { container: toolbar }
+          toolbar: { container: toolbar }
         }
       , theme: 'snow'
       , 'link-tooltip': true
+      })
+      quill.multiCursor = quill.addModule('multi-cursor', {
+        timeout: 10000
       })
       resolve()
     })
@@ -96,38 +63,75 @@ function setup(plugin, imports, register) {
       return Promise.resolve(doc)
     })
   })
+
+  editor.onLoad(setupCursors)
+
+  function setupCursors(editableDoc, broadcast, onClose) {
+    if (ui.store.getState().editor.editor !== 'Quill') return
+    var stream = broadcast.createDuplexStream(new Buffer('cursors-quill'))
+    editableDoc.on('init', () => {
+     editableDoc.quill.on('selection-change', (range) => {
+       if (range) { 
+	 stream.write(JSON.stringify({cursor: range.start})+'\n')
+       }else {
+	 stream.write(JSON.stringify({cursor: null})+'\n')
+       }
+     })
+      
+      // render others' cursors
+      stream
+      .pipe(jsonParse())
+      .on('data', (broadcastCursors) => {
+	var state = ui.store.getState()
+	for (var userId in broadcastCursors) {
+	  if (null === broadcastCursors[userId]) return
+	  var user = state.presence.users[userId]
+	  editableDoc.quill.multiCursor
+	  .setCursor(userId, broadcastCursors[userId]
+	  , user.attributes.name, user.attributes.color)
+	}
+      }) 
+    })
+  }
+
   register()
 }
 
-const config = {
-  // The toolbar groups arrangement, optimized for two toolbar rows.
-  toolbarGroups: [
-    { name: 'clipboard',   groups: [ 'clipboard', 'undo' ] },
-    { name: 'editing',     groups: [ 'find', 'selection', 'spellchecker' ] },
-    { name: 'links' },
-    { name: 'insert' },
-    { name: 'forms' },
-    { name: 'tools' },
-    { name: 'document',     groups: [ 'mode', 'document', 'doctools' ] },
-    { name: 'others' },
-    '/',
-    { name: 'basicstyles', groups: [ 'basicstyles', 'cleanup' ] },
-    { name: 'paragraph',   groups: [ 'list', 'indent', 'blocks', 'align', 'bidi' ] },
-    { name: 'styles' },
-    { name: 'colors' },
-    { name: 'about' }
-  ]
-
-  // Remove some buttons provided by the standard plugins, which are
-  // not needed in the Standard(s) toolbar.
-, removeButtons: 'Underline,Subscript,Superscript'
-
-  // Set the most common block elements.
-, format_tags: 'p;h1;h2;h3;pre'
-
-  // Simplify the dialog windows.
-, removeDialogTabs: 'image:advanced;link:advanced'
-
-  // disable loading of additional config files
-, customConfig: ''
-}
+const TOOLBAR = h('div.Editor__toolbar', [
+  h('span.ql-format-group', [
+    h('select.ql-size',{title: 'Size'}, [
+      h('option', {value:"10px"},'Small'),
+      h('option', {value:"13px"},'Normal'),
+      h('option', {value:"18px"},'Large'),
+      h('option', {value:"32px"},'Huge')
+    ])
+  , h('select.ql-font', {title: 'Font'}, [
+      h('option', {value:"sans-serif"},'Sans-serif'),
+      h('option', {value:"serif"},'Serif'),
+      h('option', {value:"monospace"},'monospace')
+    ])
+  ])
+, h('span.ql-format-group', [
+    h("span.ql-format-button.ql-bold", {title: 'Bold'}),
+    h("span.ql-format-button.ql-italic", {title: 'Italic'}),
+    h("span.ql-format-button.ql-underline", {title: 'Underline'}),
+    h("span.ql-format-button.ql-strikethrough", {title: 'Strikethrough'}),
+    h("span.ql-format-button.ql-link", {title: 'Link'})
+  ])
+, h('span.ql-format-group', [
+    h('select.ql-color', {title:'Text color'},
+      COLORS.map(color => h('option', {value:color, label:color}))),
+    h('select.ql-background', {title:'Background color'},
+      COLORS.map(color => h('option', {value:color, label:color})))
+  ])
+, h('span.ql-format-group', [
+    h("span.ql-format-button.ql-bullet", {title: 'Bulleted list'}),
+    h("span.ql-format-button.ql-list", {title: 'Ordered list'}),
+    h('select.ql-align', {title: 'Alignment'}, [
+      h('option', {value:"left", label:'Left'}),
+      h('option', {value:"center", label:'Center'}),
+      h('option', {value:"right", label:'Right'}),
+      h('option', {value:"justify", label: 'Justify'})
+    ])
+  ])
+])
