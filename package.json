@@ -8,6 +8,7 @@
     "quill": "0.20.x",
     "json-stream": "1.x",
     "through2": "1.x",
+    "virtual-dom":"2.x",
     "rich-text": "git+https://github.com/ottypes/rich-text.git"
   },
   "scripts": {
