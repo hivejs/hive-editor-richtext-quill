@@ -42,6 +42,7 @@ function setup(plugin, imports, register) {
   var broadcast = imports.broadcast
 
   ui.registerModule(path.join(__dirname, 'client.js'))
+  ui.externalizeModule('quill')
   ui.registerStaticDir(path.resolve(__dirname+'/../quill/dist/'))
 
   ot.registerOTType('richtext', richtextOT.type)

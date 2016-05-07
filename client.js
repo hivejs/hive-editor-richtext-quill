@@ -14,8 +14,7 @@
  * You should have received a copy of the Mozilla Public License
  * along with this program.  If not, see <https://www.mozilla.org/en-US/MPL/2.0/>.
  */
-var Quill = require('quill')
-  , bindEditor = require('./bindingQuill.js')
+var bindEditor = require('./bindingQuill.js')
   , jsonParse = require('json-stream')
   , vdom = require('virtual-dom')
   , h = vdom.h
@@ -35,7 +34,7 @@ function setup(plugin, imports, register) {
   link.href = ui.baseURL+'/static/quill/dist/quill.snow.css'
   link.rel = 'stylesheet'
   document.head.appendChild(link)
-
+ 
   editor.registerEditor('Quill', 'richtext', 'A rich-text editor'
   , function(el, onClose) {
 
@@ -50,9 +49,10 @@ function setup(plugin, imports, register) {
     content.style['display'] = 'none' // Don't display until the content is loaded
     el.appendChild(content)
 
-    var quill
-    return new Promise(function(resolve) {
-      quill = new Quill(content, {
+    return ui.requireScript(ui.baseURL+'/static/build/quill.js')
+    .then(() => {
+      var Quill = require('quill')
+      var quill = new Quill(content, {
         modules: {
           toolbar: { container: toolbar }
         }
@@ -62,18 +62,16 @@ function setup(plugin, imports, register) {
       quill.multiCursor = quill.addModule('multi-cursor', {
         timeout: 10000
       })
-      resolve()
-    })
-    .then(() => {
+      
       // bind editor
       var doc = bindEditor(quill)
       doc.once('editableInitialized', () => {
-	// on init: Maximize editor + display toolbar
-	el.style['height'] = '100%'
-	content.style['overflow-y'] = 'scroll'
-	content.style['padding'] = '5px'
-	toolbar.style['display'] = 'block'
-	content.style['display'] = 'block'
+        // on init: Maximize editor + display toolbar
+        el.style['height'] = '100%'
+        content.style['overflow-y'] = 'scroll'
+        content.style['padding'] = '5px'
+        toolbar.style['display'] = 'block'
+        content.style['display'] = 'block'
       })
 
       return Promise.resolve(doc)
@@ -88,9 +86,9 @@ function setup(plugin, imports, register) {
     editableDoc.on('init', () => {
      editableDoc.quill.on('selection-change', (range) => {
        if (range) { 
-	 stream.write(JSON.stringify({cursor: range.start})+'\n')
+         stream.write(JSON.stringify({cursor: range.start})+'\n')
        }else {
-	 stream.write(JSON.stringify({cursor: null})+'\n')
+         stream.write(JSON.stringify({cursor: null})+'\n')
        }
      })
       
@@ -98,14 +96,14 @@ function setup(plugin, imports, register) {
       stream
       .pipe(jsonParse())
       .on('data', (broadcastCursors) => {
-	var state = ui.store.getState()
-	for (var userId in broadcastCursors) {
-	  if (null === broadcastCursors[userId]) return
-	  var user = state.presence.users[userId]
-	  editableDoc.quill.multiCursor
-	  .setCursor(userId, broadcastCursors[userId]
-	  , user.attributes.name, user.attributes.color)
-	}
+        var state = ui.store.getState()
+        for (var userId in broadcastCursors) {
+          if (null === broadcastCursors[userId]) return
+          var user = state.presence.users[userId]
+          editableDoc.quill.multiCursor
+          .setCursor(userId, broadcastCursors[userId]
+          , user.attributes.name, user.attributes.color)
+        }
       }) 
     })
   }
