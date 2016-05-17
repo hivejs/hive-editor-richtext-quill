@@ -1,6 +1,6 @@
 {
   "name": "hive-editor-richtext-quill",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "description": "Rich text editor for hive.js",
   "main": "index.js",
   "dependencies": {
